@@ -1,0 +1,675 @@
+---
+title: "Medicaid & CHIP Access: A Data-Driven Exploration"
+author: "Shaveen Saadee, Jesus Zarate, Halbert Nguyen"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    df_print: paged
+    theme: spacelab
+  html_notebook:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+runtime: shiny
+---
+
+## Background
+
+**Purpose:** Medicaid and CHIP provide vital healthcare coverage to ensure low-income individuals, children, and families have access to necessary medical services.
+
+  - **Medicaid:** Offers support to low-income adults, children, pregnant women, elderly individuals, and people with disabilities, addressing a wide range of healthcare needs.
+
+  - **CHIP:** Focuses on children in families with incomes too high for Medicaid but too low to afford private insurance, bridging a critical gap in coverage for millions of children.
+
+  - **Cost:** Designed to be accessible, these programs eliminate enrollment fees or monthly premiums for those who qualify, reducing financial barriers to care.
+
+  - **Services Covered:** Coverage includes preventive care (such as check-ups and immunizations), hospital services, prescription medications, mental health support, and in some cases, dental and vision care, depending on state programs.
+
+  - **Administration:** Jointly funded and managed by federal and state governments, with states having flexibility to design programs that address local healthcare challenges while meeting federal guidelines.
+
+**Goal:** Aim to expand healthcare access, reduce disparities, and improve health outcomes for vulnerable and underserved populations across the United States.
+
+---
+
+## Data Sets and Research Questions
+1. **Medicaid and CHIP Enrollment Data:**
+   - Sourced from the Medicaid.gov Open Data Portal
+     - Contains detailed monthly enrollment data for Medicaid and CHIP across all 50 states
+     - Utilized to analyze and compare enrollment rates across states
+
+2. **Medicaid Coverage Rates For Individuals 0-64:**
+   - Sourced from the Kaiser Family Foundation
+     - Offers state-level data on the composition of Medicaid beneficiaries 
+     - Merged data on work status, race, and income levels into a unified dataset for analysis
+
+3. **Exploratory Questions:** 
+   1. Comparative analysis of enrollment rates between states?
+   2. Are certain demographic groups over- or under-represented in Medicaid/CHIP enrollment?
+   3. What is the relationship between types of employment, ethnic background, and Medicaid/CHIP enrollment?
+   4. Which conditions are most prevalent among medicaid beneficiaries?
+   
+---
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `State`                                              | String    | Region of beneficiaries|
+| `Year`                                               | Numerical | The year for the data entry (e.g., 2020, 2021).|
+| `Condition`                                          | String    | The specific health condition of the population|
+| `Race`                                               | String    | The racial demographics of the population (e.g., "White", "Black", "Hispanic").|
+| `Medicaid.Enrollment`                                | Numerical | The number of individuals enrolled in Medicaid in the given year and state.|
+| `CHIP.Enrollment`                                    | Numerical | The number of individuals enrolled in the Children's Health Insurance Program (CHIP).|
+| `Total.Medicaid.and.CHIP.Enrollment`                 | Numerical | The total number of individuals enrolled in both Medicaid and CHIP.|
+| `Child.Enrollment..Medicaid.Child...CHIP.Enrollment.`| Numerical | The number of children enrolled in Medicaid combined with the number of children enrolled in CHIP      |
+| `Total_Beneficiaries_State`                          | Numerical | The total number of beneficiaries (Medicaid, CHIP, etc.) in a given state.|
+| `At.Least.1.Full.Time.Worker`                        | Numerical | The number of individuals with at least one full-time worker in their household.|
+| `Part.Time.Workers`                                  | Numerical | The number of individuals with part-time workers in their household.|
+| `Non.Workers`                                        | Numerical | The number of individuals with no workers in their household.|
+| `Under.100.`                                         | Numerical | The number of individuals with a household income between 100% and 199% of the federal poverty level.|
+| `X100.199`                                           | Numerical | The number of individuals with a household income between 100% and 199% of the federal poverty level.|
+| `X200.399`                                           | Numerical | The number of individuals with a household income between 200% and 399% of the federal poverty level.|
+| `X400...`                                            | Numerical | The number of individuals with a household income above 400% of the federal poverty level.|
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+library(dplyr)
+library(tidyr)
+library(plotly)
+library(hrbrthemes)
+library(ggthemes)
+library(ggplot2)
+library(knitr)
+library(shiny)
+library(scales)
+```
+
+
+```{r, echo = FALSE, message = FALSE}
+
+# reading in data
+
+medicaid_eligibility_data <- read.csv("~/Desktop/medicaid_eligibility.csv")
+View(medicaid_eligibility_data)
+
+medicaid_coverage_data <- read.csv("~/Desktop/Medicaid Coverage Rates 0-64.csv")
+View(medicaid_coverage_data)
+
+physical_conditions <- read.csv("~/Desktop/benf_physical_health-2017-2021.csv")
+View(physical_conditions)
+
+behavioral_conditions <- read.csv("~/Desktop/benf_behavioral_health-2017-2021.csv")
+View(behavioral_conditions)
+
+enrollment_trends <- read.csv("~/Desktop/medicaid_chip_enrollment.csv")
+View(enrollment_trends)
+
+cleaned_enrollment_data <- read.csv("~/Desktop/cleaned_medicaid_chip_enrollment.csv", check.names = FALSE)
+View(cleaned_enrollment_data)
+
+coverage_rates_data <- read.csv("~/Desktop/Medicaid Coverage Rates 0-64.csv")
+View(coverage_rates_data)
+
+merged_data <- read.csv("~/Desktop/Merged_Data_With_Poverty_Stats.csv")
+View(merged_data)
+
+```
+
+
+---
+
+## Data Exploration
+
+```{r, echo = FALSE, message = FALSE}
+
+enrollment_trends_cleaned <- enrollment_trends %>%
+  slice(1:(n() - 1)) %>%  # Exclude the last row
+  mutate(across(
+    c(Medicaid.Enrollment, CHIP.Enrollment, Total.Medicaid.and.CHIP.Enrollment, 
+      Child.Enrollment..Medicaid.Child...CHIP.Enrollment.), 
+    ~ as.numeric(gsub("[^0-9.-]", "", .)),  # Clean non-numeric characters
+    .names = "{col}"  # Keep the original column names
+  )) %>%
+  slice_head(n = 25)  # Select the top 25 rows
+
+
+# Create the graph for enrollment trends across states
+ggplot(enrollment_trends_cleaned,
+         aes(x = reorder(State, -Total.Medicaid.and.CHIP.Enrollment))) +
+  geom_bar(aes(y = Total.Medicaid.and.CHIP.Enrollment, fill = State), stat = "identity", show.legend = FALSE) +
+  scale_fill_manual(values = c(
+    "#0000FF", "#0000CD", "#1E90FF", "#4682B4", "#5F9EA0", 
+    "#6495ED", "#4169E1", "#00BFFF", "#87CEEB", "#ADD8E6", 
+    "#B0E0E6", "#4682B4", "#00CED1", "#20B2AA", "#48D1CC", 
+    "#7FFFD4", "#40E0D0", "#AFEEEE", "#00FFFF", "#00B5E2", 
+    "#66CCFF", "#5BA4CF", "#4C8CFF", "#3399FF", "#003366"
+  )) +
+  labs(
+    title = "Medicaid and CHIP Enrollment Trends Across States",
+    x = "State",
+    y = "Total Enrollment"
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 80, hjust = 1),
+    plot.title = element_text(face = "bold", size = 14)
+  )
+
+```
+
+This dataset includes Medicaid and CHIP enrollment figures from 25 out of the 50 states, with California having the highest total number of beneficiaries. However, it's crucial to consider the population sizes of these states. While California leads in beneficiary numbers, it also has the largest population of any state. Nonetheless, this data provides a valuable visual representation of how many individuals across various states rely on essential social welfare programs like CHIP and Medicaid.
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+
+enrollment_trends_cleaned <- enrollment_trends %>%
+  slice(1:(n() - 1)) %>%  # Exclude the last row
+  mutate(across(
+    c(Medicaid.Enrollment, CHIP.Enrollment, Total.Medicaid.and.CHIP.Enrollment, 
+      Child.Enrollment..Medicaid.Child...CHIP.Enrollment.), 
+    ~ as.numeric(gsub("[^0-9.-]", "", .)),  # Clean non-numeric characters
+    .names = "{col}"  # Keep the original column names
+  )) %>%
+  slice(26:50)
+
+# Create the graph for enrollment trends across states
+ggplot(enrollment_trends_cleaned, aes(x = reorder(State, -Total.Medicaid.and.CHIP.Enrollment))) +
+  geom_bar(aes(y = Total.Medicaid.and.CHIP.Enrollment, fill = State), stat = "identity", show.legend = FALSE) +
+  scale_fill_manual(values = c(
+    "#FF8033", "#FFB266", "#1F1F1F", "#3B2F2F", "#2C003E", 
+    "#FFD1E0", "#FFADD6", "#FF80B3", "#FF1493", "#FF4D99", "#FF1A80", 
+    "#FF0066", "#E6005C", "#D40052", "#C20049", "#B10040", 
+    "#A10038", "#950032", "#8B0030", "#7A0028", "#690021", 
+    "#58001A", "#470014", "#37000F", "#28000A", "#190003"
+  )) +
+  labs(
+    title = "Medicaid and CHIP Enrollment Trends Across States",
+    x = "State",
+    y = "Total Enrollment"
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 80, hjust = 1),
+    plot.title = element_text(face = "bold", size = 14)
+  )
+
+```
+
+This second set of states, not featured in the first graph, highlights an intriguing contrast. Although New York has a smaller overall population than Texas, it surpasses Texas in the number of Medicaid and CHIP beneficiaries. This difference is largely driven by New York's higher poverty rates, which result in a greater reliance on public healthcare programs. In contrast, Texas, despite its larger population, has a lower percentage of residents qualifying for Medicaid and CHIP.
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+
+library(tidyverse)
+
+library(plotly)
+
+ 
+data_aggregated <- cleaned_enrollment_data %>%
+  select(-Location) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "Year", values_to = "Total_Enrollment") %>%
+  mutate(Year = as.numeric(Year)) 
+
+
+fig <- plot_ly(data_aggregated,
+               x = ~Year,
+               y = ~Total_Enrollment,
+               type = 'scatter',
+               mode = 'lines+markers',
+               marker = list(size = 8), 
+               name = 'Total Enrollment') %>%
+  layout(title = "Total Enrollment Trends post-2014 Expansion",
+         yaxis = list(title = "Total Enrollment"))
+
+
+fig
+
+```
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+
+data_long <- cleaned_enrollment_data %>%
+  pivot_longer(
+    cols = -Location,
+    names_to = "Year",
+    values_to = "Enrollment"
+  ) %>%
+  mutate(
+    Year = as.numeric(gsub("X", "", Year))
+  ) %>%
+  filter(Year >= 2014 & Year <= 2024)
+
+ui <- fluidPage(
+  titlePanel("Medicaid/CHIP Enrollment by State (2014–2024)"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput(
+        inputId = "selected_states",
+        label = "Select States:",
+        choices = unique(data_long$Location),
+        selected = unique(data_long$Location)[1],
+        multiple = TRUE
+      )
+    ),
+    mainPanel(
+      plotlyOutput(outputId = "enrollment_plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$enrollment_plot <- renderPlotly({
+    filtered_data <- data_long %>%
+      filter(Location %in% input$selected_states)
+   
+    # Create the line graph
+    plot_ly(
+      data = filtered_data,
+      x = ~Year,
+      y = ~Enrollment,
+      color = ~Location,
+      type = 'scatter',
+      mode = 'lines+markers',
+      marker = list(size = 6),
+      line = list(width = 2)
+    ) %>%
+      layout(
+        title = "Medicaid/CHIP Enrollment Trends",
+        xaxis = list(title = "Year"),
+        yaxis = list(title = "Enrollment Numbers"),
+        legend = list(title = list(text = "States"))
+      )
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+```
+
+In 2014 the Affordable Care Act's (ACA) Medicaid expansion expanded Medicaid coverage to nearly all adults with incomes up to 138% of the Federal Poverty Level, leading a large increase in enrollments for many states. During the COVID-19 Pandemic Medicaid restrictions were loosened as people lost their jobs and stable income so Medicaid enrollments increased. Once the pandemic ended enrollment criteria tighten, leading to a decreased in enrollments.
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+
+physical_sorted <- physical_conditions %>%
+  # Clean the 'Number.of.Beneficiaries' column by removing non-numeric characters (except for decimals)
+  mutate(Number.of.Beneficiaries = as.numeric(gsub("[^0-9.]", "", Number.of.Beneficiaries))) %>%
+  
+  # Replace any NAs with 0 (if the conversion failed)
+  mutate(Number.of.Beneficiaries = ifelse(is.na(Number.of.Beneficiaries), 0, Number.of.Beneficiaries)) %>%
+  
+  # Sort the data by 'Number.of.Beneficiaries' in descending order
+  arrange(desc(Number.of.Beneficiaries))
+
+# View the sorted data
+View(physical_sorted)
+
+```
+
+
+```{r, echo = FALSE, message = FALSE}
+
+# Summarize data by state and condition
+condition_summary <- physical_sorted %>%
+  group_by(State, Condition) %>%
+  summarise(Total_Beneficiaries = sum(Number.of.Beneficiaries, na.rm = TRUE)) %>%
+  ungroup()
+
+# Identify greatest condition treated in each state
+greatest_condition <- condition_summary %>%
+  group_by(State) %>%
+  filter(Total_Beneficiaries == max(Total_Beneficiaries)) %>%
+  ungroup()
+
+top_states <- condition_summary %>%
+  group_by(State) %>%
+  summarise(Total_Beneficiaries_State = sum(Total_Beneficiaries)) %>%
+  arrange(desc(Total_Beneficiaries_State)) %>%
+  slice_head(n = 25) %>%
+  pull(State)
+
+# Filter to include only the top 25 states
+greatest_condition_top_25 <- greatest_condition %>%
+  filter(State %in% top_states)
+
+# Plot
+ggplot(greatest_condition_top_25, aes(x = State, y = Total_Beneficiaries, fill = Condition)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +  # Flip coordinates for easier readability
+  labs(title = "Greatest Physcial Condition Treated in Each State",
+       subtitle = "The Battle Against Illness, Fought State by State",
+       x = "State",
+       y = "Total Beneficiaries",
+       fill = "Condition") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y = element_text(face = "bold", vjust = 2.5),
+        axis.title.x = element_text(face = "bold", vjust = -1.5),
+        plot.title = element_text(face = "bold", size = 14,  vjust = -0.5),
+        plot.subtitle = element_text(margin = margin(b = 12), face = "italic", size = 11, vjust= 1),
+        plot.caption = element_text(size = 10, face = "italic", hjust = 1.5)) +
+  scale_fill_brewer(palette = "Set3")
+
+```
+
+Substance Use Disorders (SUDs) stand out as the most commonly treated conditions under Medicaid across all states, reflecting both the scale of the public health crisis and the critical role Medicaid plays in addressing it. These disorders encompass a range of issues, including dependency on alcohol, opioids, hallucinogens, and other substances.
+
+Medicaid provides access to vital services that might otherwise be out of reach, such as detoxification, counseling, medication-assisted treatment (MAT), and long-term rehabilitation programs.
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+
+# Summarize the data by state and condition
+condition_summary <- physical_sorted %>%
+  group_by(State, Condition) %>%
+  summarise(Total_Beneficiaries = sum(Number.of.Beneficiaries, na.rm = TRUE)) %>%
+  ungroup()
+
+# Rank conditions within each state based on the number of beneficiaries
+condition_ranked <- condition_summary %>%
+  group_by(State) %>%
+  arrange(desc(Total_Beneficiaries)) %>%
+  mutate(Rank = row_number()) %>%
+  ungroup()
+
+# Filter to get the 5th condition for each state
+fifth_condition <- condition_ranked %>%
+  filter(Rank == 5)
+
+top_states <- condition_summary %>%
+  group_by(State) %>%
+  summarise(Total_Beneficiaries_State = sum(Total_Beneficiaries)) %>%
+  arrange(desc(Total_Beneficiaries_State)) %>%
+  slice_head(n = 25) %>%
+  pull(State)  # Get a vector of top 25 states
+
+# Filter the fifth condition data to include only the top 25 states
+fifth_condition_top_25 <- fifth_condition %>%
+  filter(State %in% top_states)
+
+# Plot
+ggplot(fifth_condition_top_25, aes(x = State, y = Total_Beneficiaries, fill = Condition)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +  # Flip coordinates for easier readability
+  labs(title = "Fifth Greatest Physical Condition Treated in Each State",
+       subtitle = "Ranked by the Total Number of Beneficiaries",
+       x = "State",
+       y = "Total Beneficiaries",
+       fill = "Condition") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y = element_text(face = "bold", vjust = 2.5),
+        axis.title.x = element_text(face = "bold", vjust = -1.5),
+        plot.title = element_text(face = "bold", size = 14, vjust = -0.5),
+        plot.subtitle = element_text(margin = margin(b = 12), face = "italic", size = 11, vjust = 1),
+        plot.caption = element_text(size = 10, face = "italic", hjust = 1.5)) +
+  scale_fill_brewer(palette = "Set3")
+
+```
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+
+behavioral_sorted <- behavioral_conditions %>%
+  # Clean the 'Number.of.Beneficiaries' column by removing non-numeric characters (except for decimals)
+  mutate(Number.of.Beneficiaries = as.numeric(gsub("[^0-9.]", "", Number.of.Beneficiaries))) %>%
+  
+  # Replace any NAs with 0 (if the conversion failed)
+  mutate(Number.of.Beneficiaries = ifelse(is.na(Number.of.Beneficiaries), 0, Number.of.Beneficiaries)) %>%
+  
+  # Sort the data by 'Number.of.Beneficiaries' in descending order
+  arrange(desc(Number.of.Beneficiaries))
+
+# View the sorted data
+View(behavioral_sorted)
+
+```
+
+
+```{r, echo = FALSE, message = FALSE}
+
+# Summarize the data by state and condition
+condition_summary <- behavioral_sorted %>%
+  group_by(State, Condition) %>%
+  summarise(Total_Beneficiaries = sum(Number.of.Beneficiaries, na.rm = TRUE)) %>%
+  ungroup()
+
+# Rank conditions within each state based on the number of beneficiaries
+condition_ranked <- condition_summary %>%
+  group_by(State) %>%
+  arrange(desc(Total_Beneficiaries)) %>%
+  mutate(Rank = row_number()) %>%
+  ungroup()
+
+# Filter to get the 5th condition for each state
+fifth_condition <- condition_ranked %>%
+  filter(Rank == 5)
+
+top_states <- condition_summary %>%
+  group_by(State) %>%
+  summarise(Total_Beneficiaries_State = sum(Total_Beneficiaries)) %>%
+  arrange(desc(Total_Beneficiaries_State)) %>%
+  slice_head(n = 25) %>%
+  pull(State)  # Get a vector of top 25 states
+
+fifth_condition_top_25 <- fifth_condition %>%
+  filter(State %in% top_states)
+
+# Plot
+ggplot(fifth_condition_top_25, aes(x = State, y = Total_Beneficiaries, fill = Condition)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +  # Flip coordinates for easier readability
+  labs(title = "Fifth Greatest Behavioral Condition Treated per State",
+       subtitle = "Ranked by the Total Number of Beneficiaries",
+       x = "State",
+       y = "Total Beneficiaries",
+       fill = "Condition") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y = element_text(face = "bold", vjust = 2.5),
+        axis.title.x = element_text(face = "bold", vjust = -1.5),
+        plot.title = element_text(face = "bold", size = 14, vjust = -0.5),
+        plot.subtitle = element_text(margin = margin(b = 12), face = "italic", size = 11, vjust = 1),
+        plot.caption = element_text(size = 10, face = "italic", hjust = 1.5)) +
+  scale_fill_brewer(palette = "Set3") +
+  scale_y_continuous(labels = label_comma())
+
+```
+
+Medicaid’s comprehensive care coverage plays a critical role in addressing health-related issues beyond what physically affects beneficiaries. Medicaid and CHIP are important to funding treatment for mental health conditions as well. Among behavioral conditions, depression is one of the most commonly treated among beneficiaries, reflecting the widespread need for mental health support across various populations.
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+
+worker_data <- coverage_rates_data
+worker_types <- c("At.Least.1.Full.Time.Worker", "Part.Time.Workers", "Non.Workers")
+worker_means <- colMeans(worker_data[worker_types], na.rm = TRUE)
+worker_means_df <- data.frame(
+  WorkerType = c("At Least 1 Full-Time Worker", "Part-Time Workers", "Non-Workers"),
+  CoverageRate = worker_means
+)
+
+ggplot(worker_means_df, aes(x = WorkerType, y = CoverageRate, fill = WorkerType)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  scale_fill_manual(values = c("#3ec0d5", "#daab38", "#6DCC9E")) +
+  labs(
+    title = "Average Medicaid Coverage Rates by Worker Type",
+    subtitle = "A Measure of Security: The Impact of Medicaid on Workers",
+    x = "Worker Type",
+    y = "Coverage Rate"
+  ) +
+  theme_bw() +
+  theme(axis.title.x = element_text(face = "bold", vjust= -0.5),
+        axis.title.y = element_text(face = "bold", vjust= 3),
+        plot.title = element_text(face = "bold", size = 14, vjust= 0.2),
+        plot.subtitle = element_text(margin = margin(b = 12), face = "italic", size = 11),
+        plot.caption = element_text(size = 10, face = "italic", hjust= 1.5))
+
+```
+
+Medicaid coverage is most common among non-workers and least prevalent among full-time workers, reflecting the influence of employment status on Medicaid reliance. With employment often providing access to health insurance, individuals without jobs are more likely to depend on Medicaid for healthcare coverage.
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+
+income_data <- coverage_rates_data
+
+income_levels <- c("Under.100.", "X100.199", "X200.399", "X400...")
+colnames(data)
+
+income_means <- colMeans(income_data[income_levels], na.rm = TRUE)
+
+# Calculate percentages
+percentages <- round(100 * income_means / sum(income_means), 1)
+
+# Create labels with percentages
+labels_with_percentages <- paste(
+  c("Below 100% FPL", "100–199% FPL", "200–399% FPL", "400%+ FPL"),
+  " (", percentages, "%)", sep = ""
+)
+
+# Create pie chart
+pie(
+  income_means,
+  labels = labels_with_percentages,
+  col = c("#daab38", "#3ec0d5", "#6DCC9E", "#dd6b6b"),
+  main = "Medicaid Coverage by Income Level",
+  init.angle = 140,
+  cex = 0.8
+)
+
+
+```
+
+**Explanation of FPL and Income Brackets**
+
+Federal Poverty Level (FPL):The FPL, updated annually by the U.S. Department of Health and Human Services (HHS), determines eligibility for programs like Medicaid. It varies by household size.
+
+Income Brackets:
+
+- **Below 100% of the FPL:** This group includes individuals and families earning less than the defined poverty threshold. **Example (2023):** For a family of 4, 100% of the FPL is $30,000.
+
+- **100-199% of the FPL:** This group earns slightly above the poverty line but may still struggle with housing, healthcare, and education costs. Medicaid eligibility for this bracket depends on state-specific expansions and program rules.
+
+- **200-399% of the FPL:** These individuals or families earn a moderate income; ineligible for Medicaid but may qualify for ACA subsidies.
+
+- **400%+ of the FPL:** This bracket includes higher-income households with financial resources well above the poverty line; ineligible for Medicaid or subsidies, expected to afford private insurance.
+
+Medicaid enrollment trends vary significantly across income levels. Individuals below 100% of the Federal Poverty Level (FPL) are the most likely to rely on Medicaid, while those with incomes at 400% or above the FPL are far less likely to enroll. Income brackets between 100-199% and 200-399% of the FPL show decreasing levels of Medicaid reliance as household income increases.
+
+---
+
+```{r, echo = FALSE, message = FALSE}
+
+race_columns <- c("White", "Black", "Hispanic",
+                  "Asian.Native.Hawaiian.or.Pacific.Islander",
+                  "American.Indian.or.Alaska.Native", "Multiple.Races")
+
+poverty_columns <- c("Poverty_White", "Poverty_Black", "Poverty_Hispanic",
+                     "Poverty_Asian_Native_Hawaiian_Pacific_Islander",
+                     "Poverty_American_Indian_Alaska_Native", "Poverty_Multiple_Races")
+
+
+merged_data[race_columns] <- lapply(merged_data[race_columns], function(x) as.numeric(gsub("[^0-9.]", "", x)))
+
+merged_data[poverty_columns] <- lapply(merged_data[poverty_columns], function(x) as.numeric(gsub("[^0-9.]", "", x)))
+
+
+race_means <- colMeans(merged_data[race_columns], na.rm = TRUE)
+poverty_means <- colMeans(merged_data[poverty_columns], na.rm = TRUE)
+
+ 
+both <- data.frame(
+  Race = c("White", "Black", "Hispanic",
+           "Asian/Native Hawaiian/Pacific Islander",
+           "American Indian/Alaska Native",
+           "Multiple Races")
+)
+
+ggplot(both) +
+  geom_line(aes(x = Race, y = race_means, group = 1), color = "#87bc8f") +
+  geom_point(aes(x = Race, y = race_means), color = "#24572b", size = 2) +
+  geom_line(aes(x = Race, y = poverty_means * max(race_means) / max(poverty_means), group = 1),
+            color = "#ff7f0e", linetype = "dashed") +
+  geom_point(aes(x = Race, y = poverty_means * max(race_means) / max(poverty_means)),
+             color = "#d62728", size = 2) +
+  scale_y_continuous(
+    name = "Coverage Rate",
+    sec.axis = sec_axis(~ . * max(poverty_means) / max(race_means), name = "Poverty Rate")
+  ) +
+  labs(
+    title = "Medicaid Coverage and Poverty by Race",
+    subtitle = "A Portrait of Healthcare Inclusion and Economic Disparity",
+    x = "Race"
+  ) +
+  theme_bw() +
+  theme(
+    axis.title.x = element_text(face = "bold", vjust= -0.5),
+    axis.title.y.left = element_text(face = "bold", color="#87bc8f", vjust=3),
+    axis.title.y.right = element_text(face = "bold", color="#ff7f0e", vjust=3),
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.title = element_text(face="bold", size=14, vjust=0.2),
+    plot.subtitle = element_text(margin=margin(b=12), face="italic", size=11),
+    plot.caption = element_text(size=10, face="italic", hjust=1.5)
+  )
+
+```
+
+Black and American Indian/Alaska Native populations have the highest Medicaid coverage rates (~40%), while White and Asian groups have the lowest (~10%).
+
+This disparity is closely tied to systemic inequalities that disproportionately affect minority groups. Structural barriers, such as discrimination in housing, education, employment, and healthcare access, have contributed to higher poverty rates among these communities. Living in poverty increases reliance on Medicaid, as it serves as a vital safety net for healthcare services when other options are unavailable or not affordable.
+
+The similar trends in Medicaid enrollment across racial and ethnic lines underscore these systemic challenges, highlighting the critical role Medicaid plays in addressing healthcare inequities among underserved populations.
+
+---
+
+## Takeaways & Call to Action
+
+Medicaid and CHIP play a critical role in ensuring healthcare access for vulnerable populations, including:
+
+- Non-workers and part-time workers without employer-provided healthcare benefits
+
+- Low-income individuals and families near or below the poverty line
+
+- Racial and ethnic groups disproportionately reliant on Medicaid
+
+As a cornerstone of the healthcare safety net, Medicaid helps bridge gaps in access and outcomes across socioeconomic and racial lines. It offers essential coverage to those without employer-sponsored or private insurance, ensuring they receive vital care.
+
+**Call to Action:**
+Expanding Medicaid coverage and enhancing its accessibility can substantially reduce disparities in healthcare access, fostering greater equity in the U.S. healthcare system. By broadening eligibility, increasing outreach efforts, and addressing systemic barriers, policymakers can ensure that more individuals and families—especially those in underserved communities—receive the care they need. Strengthening Medicaid’s infrastructure and funding can also improve health outcomes, reduce long-term healthcare costs, and create a more inclusive healthcare system for all Americans.
+
+---
+
+## Works Cited
+
+CMS Medicaid Data. data.medicaid.gov. (n.d.-a). https://data.medicaid.gov/dataset/bb4936ea-8adf-41a5-882b-786a0b3a8822
+
+CMS Medicaid Data. data.medicaid.gov. (n.d.-a). https://data.medicaid.gov/dataset/7db0e932-5275-4c3c-b4b6-8dc5f1520c3b 
+
+"CMS Medicaid Data." data.medicaid.gov. (n.d.-a). https://data.medicaid.gov/dataset/ac553cd4-63eb-44d4-9946-f29c0ccc1838 
+
+"Distribution of people ages 0-64 with Medicaid by Race/Ethnicity. KFF. (2024a, October 24). https://www.kff.org/medicaid/state-indicator/medicaid-distribution-people-0-64-by-raceethnicity/?currentTimeframe=0&sortModel=%7B%22colId%22%3A%22Location%22%2C%22sort%22%3A%22asc%22%7D
+
+"Medicaid & Chip Coverage" HealthCare.gov. Accessed January 6, 2025. https://www.healthcare.gov/medicaid-chip/.
+
+"The home of Medicaid & CHIP Open Data." data.medicaid.gov. (n.d.). https://data.medicaid.gov/ 
+
+"Total monthly Medicaid & Chip enrollment and Pre-ACA enrollment." KFF. (2024, December 3). https://www.kff.org/affordable-care-act/state-indicator/total-monthly-medicaid-and-chip-enrollment/?currentTimeframe=0&sortModel=%7B&quot&colId&%3A&Location&%2C&sort&asc 
+
+<br><br>
+<br><br>
+<br><br>
+
+

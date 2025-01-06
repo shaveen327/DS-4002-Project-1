@@ -1,0 +1,167 @@
+---
+title: "Merge Code DS 4002 Proj 1"
+output: html_document
+date: "2025-01-06"
+---
+
+#initial merge
+```{r}
+library(dplyr)
+read_and_clean_csv <- function(file_path, skip_rows) {
+  read.csv(file_path, skip = skip_rows, header = TRUE, stringsAsFactors = FALSE)
+}
+
+age <- read_and_clean_csv("agedata.csv", skip_rows = 2)
+workstatus <- read_and_clean_csv("workstatusdata.csv", skip_rows = 2)
+fpl <- read_and_clean_csv("fpldata.csv", skip_rows = 2)
+race <- read_and_clean_csv("racedata.csv", skip_rows = 2)
+
+merged_064 <- age %>%
+  full_join(workstatus, by = "Location") %>%
+  full_join(fpl, by = "Location") %>%
+  full_join(race, by = "Location")
+
+head(merged_064)
+
+write.csv(merged_064, "Medicaid Coverage Rates 0-64.csv", row.names = FALSE)
+```
+
+
+#Enrollment numbers by state
+```{r}
+library(tidyr)
+library(readr)
+
+clean_file <- function(filename) {
+  yes <- read_csv(filename, 
+                   skip = 3,
+                   col_names = c("Location", 
+                                "Pre_ACA_Enrollment",
+                                "Total_Enrollment",
+                                "Percent_Change",
+                                "Footnotes"),
+                   col_types = cols(
+                     Location = col_character(),
+                     Pre_ACA_Enrollment = col_character(),
+                     Total_Enrollment = col_character(),
+                     Percent_Change = col_character(),
+                     Footnotes = col_character()
+                   ))
+  
+  yes <- yes %>%
+    filter(!is.na(Location),
+           Location != "United States",
+           Location != "Notes",
+           !grepl("^\\*", Location)) %>%
+    mutate(Total_Enrollment = gsub(",", "", Total_Enrollment),
+           Total_Enrollment = as.numeric(Total_Enrollment))
+  
+  return(yes)
+}
+
+data_2014 <- clean_file("2014data.csv") %>% mutate(Year = 2014)
+data_2015 <- clean_file("2015data.csv") %>% mutate(Year = 2015)
+data_2016 <- clean_file("2016data.csv") %>% mutate(Year = 2016)
+data_2017 <- clean_file("2017data.csv") %>% mutate(Year = 2017)
+data_2018 <- clean_file("2018data.csv") %>% mutate(Year = 2018)
+data_2019 <- clean_file("2019data.csv") %>% mutate(Year = 2019)
+data_2020 <- clean_file("2020data.csv") %>% mutate(Year = 2020)
+data_2021 <- clean_file("2021data.csv") %>% mutate(Year = 2021)
+data_2022 <- clean_file("2022data.csv") %>% mutate(Year = 2022)
+data_2023 <- clean_file("2023data.csv") %>% mutate(Year = 2023)
+data_2024 <- clean_file("2024data.csv") %>% mutate(Year = 2024)
+
+all_data <- bind_rows(
+  data_2014, data_2015, data_2016, data_2017, data_2018,
+  data_2019, data_2020, data_2021, data_2022, data_2023, data_2024
+)
+
+final_data <- all_data %>%
+  select(Location, Year, Total_Enrollment) %>%
+  pivot_wider(
+    names_from = Year,
+    values_from = Total_Enrollment
+  )
+
+write_csv(final_data, "cleaned_medicaid_chip_enrollment_by_state.csv")
+head(final_data)
+```
+#Enrollment numbers in USA as a whole
+```{r}
+library(tidyr)
+library(readr)
+
+clean_file <- function(filename) {
+  yes <- read_csv(filename,
+                   skip = 3,
+                   col_names = c("Location",
+                                 "Pre_ACA_Enrollment",
+
+"Total_Enrollment",
+                                 "Percent_Change",
+                                 "Footnotes"),
+                   col_types = cols(
+                     Location = col_character(),
+                     Pre_ACA_Enrollment = col_character(),
+                     Total_Enrollment = col_character(),
+                     Percent_Change = col_character(),
+                     Footnotes = col_character()
+                   ))
+  
+  yes <- yes %>%
+    filter(!is.na(Location),
+           Location == "United States",
+           !grepl("^\\*", Location)) %>%
+    mutate(Total_Enrollment = gsub(",", "", Total_Enrollment),
+           Total_Enrollment = as.numeric(Total_Enrollment))
+  
+  return(yes)
+}
+
+data_2014 <- clean_file("2014data.csv") %>% mutate(Year = 2014)
+data_2015 <- clean_file("2015data.csv") %>% mutate(Year = 2015)
+data_2016 <- clean_file("2016data.csv") %>% mutate(Year = 2016)
+data_2017 <- clean_file("2017data.csv") %>% mutate(Year = 2017)
+data_2018 <- clean_file("2018data.csv") %>% mutate(Year = 2018)
+data_2019 <- clean_file("2019data.csv") %>% mutate(Year = 2019)
+data_2020 <- clean_file("2020data.csv") %>% mutate(Year = 2020)
+data_2021 <- clean_file("2021data.csv") %>% mutate(Year = 2021)
+data_2022 <- clean_file("2022data.csv") %>% mutate(Year = 2022)
+data_2023 <- clean_file("2023data.csv") %>% mutate(Year = 2023)
+data_2024 <- clean_file("2024data.csv") %>% mutate(Year = 2024)
+
+all_data <- bind_rows(
+  data_2014, data_2015, data_2016, data_2017, data_2018,
+  data_2019, data_2020, data_2021, data_2022, data_2023, data_2024
+)
+
+final_data <- all_data %>%
+  select(Location, Year, Total_Enrollment) %>%
+  pivot_wider(
+    names_from = Year,
+    values_from = Total_Enrollment
+  )
+
+write_csv(final_data, "cleaned_medicaid_chip_enrollment_in_america.csv")
+```
+
+#merge with poverty data
+```{r}
+medicaid_data <- read.csv("Medicaid Coverage Rates 0-64.csv")
+poverty_data <- read.csv("Poverty Stats.csv", skip = 2)
+colnames(poverty_data) <- c(
+  "Location",
+  "Poverty_White",
+  "Poverty_Black",
+  "Poverty_Hispanic",
+  "Poverty_Asian_Native_Hawaiian_Pacific_Islander",
+  "Poverty_American_Indian_Alaska_Native",
+  "Poverty_Multiple_Races",
+  "Poverty_Total",
+  "Footnotes"
+)
+
+merged_data <- left_join(medicaid_data, poverty_data, by = "Location")
+write.csv(merged_data, "merged0-64-with-poverty-data.csv", row.names = FALSE)
+```
+
